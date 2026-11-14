@@ -1,0 +1,269 @@
+@page "/"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using global::App.Application.Todos
+@using Microsoft.Data.Sqlite
+@using Microsoft.EntityFrameworkCore
+@inject TodoService TodoService
+@inject ILogger<Home> Logger
+
+<PageTitle>TaskMaster</PageTitle>
+
+<section class="todo-page">
+    <div class="page-heading">
+        <div>
+            <p class="eyebrow">DIN ATT-GÖRA-LISTA</p>
+            <h1>Vad behöver bli gjort?</h1>
+        </div>
+        <span class="task-count">@todos.Count @(todos.Count == 1 ? "uppgift" : "uppgifter")</span>
+    </div>
+
+    @if (errorMessage is not null)
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (successMessage is not null)
+    {
+        <div class="alert alert-success" role="status">@successMessage</div>
+    }
+
+    <div class="todo-grid">
+        <section class="todo-card editor-card">
+            <h2>@(editingId is null ? "Lägg till en uppgift" : "Redigera uppgift")</h2>
+            <EditForm Model="@form" OnValidSubmit="@SaveAsync">
+                <DataAnnotationsValidator />
+                <div class="field">
+                    <label for="todo-title">Titel</label>
+                    <InputText id="todo-title" class="form-control" @bind-Value="form.Title" />
+                    <ValidationMessage For="() => form.Title" />
+                </div>
+                <div class="field">
+                    <label for="todo-description">Beskrivning <span>(valfritt)</span></label>
+                    <InputTextArea id="todo-description" class="form-control" rows="3" @bind-Value="form.Description" />
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" type="submit">
+                        @(editingId is null ? "Lägg till" : "Spara ändringar")
+                    </button>
+                    @if (editingId is not null)
+                    {
+                        <button class="btn btn-light" type="button" @onclick="CancelEdit">Avbryt</button>
+                    }
+                </div>
+            </EditForm>
+        </section>
+
+        <section class="todo-card list-card" aria-label="Uppgifter">
+            <h2>Mina uppgifter</h2>
+            @if (isLoading)
+            {
+                <p class="empty-state">Hämtar uppgifter…</p>
+            }
+            else if (todos.Count == 0)
+            {
+                <p class="empty-state">Listan är tom. Lägg till din första uppgift!</p>
+            }
+            else
+            {
+                <ul class="todo-list">
+                    @foreach (var todo in todos)
+                    {
+                        <li class="todo-item @(todo.IsCompleted ? "completed" : null)" @key="todo.Id">
+                            <button class="completion-button"
+                                    type="button"
+                                    aria-label="@(todo.IsCompleted ? "Markera som ej klar" : "Markera som klar")"
+                                    @onclick="() => ToggleCompletionAsync(todo)">
+                                @(todo.IsCompleted ? "✓" : "")
+                            </button>
+                            <div class="todo-copy">
+                                <span class="todo-title">@todo.Title</span>
+                                @if (!string.IsNullOrWhiteSpace(todo.Description))
+                                {
+                                    <span class="todo-description">@todo.Description</span>
+                                }
+                            </div>
+                            <div class="todo-actions">
+                                <button class="text-action" type="button" @onclick="() => Edit(todo)">Ändra</button>
+                                <button class="text-action delete-action" type="button" @onclick="() => DeleteAsync(todo.Id)">Ta bort</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+</section>
+
+@code {
+    private List<TodoItem> todos = [];
+    private TodoForm form = new();
+    private Guid? editingId;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTodosAsync();
+    }
+
+    private async Task LoadTodosAsync()
+    {
+        isLoading = true;
+        try
+        {
+            todos = (await TodoService.GetAllAsync()).ToList();
+        }
+        catch (SqliteException exception)
+        {
+            ReportDatabaseError(exception);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            if (editingId is Guid id)
+            {
+                await TodoService.UpdateAsync(id, form.Title, form.Description);
+                successMessage = "Uppgiften har uppdaterats.";
+            }
+            else
+            {
+                await TodoService.CreateAsync(form.Title, form.Description);
+                successMessage = "Uppgiften har lagts till.";
+            }
+        }
+        catch (ArgumentException exception)
+        {
+            errorMessage = exception.Message;
+            return;
+        }
+        catch (TodoNotFoundException)
+        {
+            errorMessage = "Uppgiften finns inte längre. Listan har uppdaterats.";
+            await LoadTodosAsync();
+            return;
+        }
+        catch (DbUpdateException exception)
+        {
+            ReportDatabaseError(exception);
+            return;
+        }
+        catch (SqliteException exception)
+        {
+            ReportDatabaseError(exception);
+            return;
+        }
+
+        ResetEditor();
+        await LoadTodosAsync();
+    }
+
+    private void Edit(TodoItem todo)
+    {
+        editingId = todo.Id;
+        form = new TodoForm
+        {
+            Title = todo.Title,
+            Description = todo.Description
+        };
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private void CancelEdit()
+    {
+        ResetEditor();
+        errorMessage = null;
+    }
+
+    private async Task ToggleCompletionAsync(TodoItem todo)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            await TodoService.SetCompletedAsync(todo.Id, !todo.IsCompleted);
+            successMessage = todo.IsCompleted
+                ? "Uppgiften markerades som ej klar."
+                : "Uppgiften markerades som klar.";
+            await LoadTodosAsync();
+        }
+        catch (TodoNotFoundException)
+        {
+            errorMessage = "Uppgiften finns inte längre. Listan har uppdaterats.";
+            await LoadTodosAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            ReportDatabaseError(exception);
+        }
+        catch (SqliteException exception)
+        {
+            ReportDatabaseError(exception);
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            await TodoService.DeleteAsync(id);
+            if (editingId == id)
+            {
+                ResetEditor();
+            }
+
+            successMessage = "Uppgiften har tagits bort.";
+            await LoadTodosAsync();
+        }
+        catch (TodoNotFoundException)
+        {
+            errorMessage = "Uppgiften finns inte längre. Listan har uppdaterats.";
+            await LoadTodosAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            ReportDatabaseError(exception);
+        }
+        catch (SqliteException exception)
+        {
+            ReportDatabaseError(exception);
+        }
+    }
+
+    private void ResetEditor()
+    {
+        editingId = null;
+        form = new TodoForm();
+    }
+
+    private void ReportDatabaseError(Exception exception)
+    {
+        Logger.LogError(exception, "Todo-databasen kunde inte hantera begäran.");
+        successMessage = null;
+        errorMessage = "Databasen kunde inte nås. Försök igen.";
+    }
+
+    private sealed class TodoForm
+    {
+        [Required(ErrorMessage = "Ange en titel.")]
+        public string Title { get; set; } = string.Empty;
+
+        public string? Description { get; set; }
+    }
+}
