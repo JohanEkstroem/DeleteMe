@@ -4,6 +4,22 @@
     <header class="app-header">
         <a class="brand" href="/">TaskMaster</a>
         <span>En enkel lista för det du vill få gjort.</span>
+        <nav class="account-nav" aria-label="Kontomeny">
+            <AuthorizeView>
+                <Authorized Context="authState">
+                    @if (authState.User.IsInRole("Admin"))
+                    {
+                        <a href="/admin">Admin</a>
+                    }
+                    <a href="/Identity/Account/Manage">Konto</a>
+                    <a href="/Identity/Account/Logout">Logga ut</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/Identity/Account/Login">Logga in</a>
+                    <a href="/Identity/Account/Register">Skapa konto</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
     </header>
 
     <main class="app-main">

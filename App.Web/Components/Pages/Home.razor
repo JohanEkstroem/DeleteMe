@@ -1,8 +1,12 @@
 @page "/"
 @rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
 @using global::App.Application.Todos
+@using Microsoft.AspNetCore.Components.Authorization
 @inject TodoService TodoService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<Home> Logger
 
 <PageTitle>TaskMaster</PageTitle>
@@ -96,6 +100,7 @@
 @code {
     private List<TodoItem> todos = [];
     private TodoForm form = new();
+    private string ownerId = string.Empty;
     private Guid? editingId;
     private bool isLoading = true;
     private string? errorMessage;
@@ -103,6 +108,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        ownerId = authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("The authenticated user has no identifier.");
         await LoadTodosAsync();
     }
 
@@ -111,7 +119,7 @@
         isLoading = true;
         try
         {
-            todos = (await TodoService.GetAllAsync()).ToList();
+            todos = (await TodoService.GetAllAsync(ownerId)).ToList();
         }
         catch (TodoRepositoryException exception)
         {
@@ -132,12 +140,12 @@
         {
             if (editingId is Guid id)
             {
-                await TodoService.UpdateAsync(id, form.Title, form.Description);
+                await TodoService.UpdateAsync(ownerId, id, form.Title, form.Description);
                 successMessage = "Uppgiften har uppdaterats.";
             }
             else
             {
-                await TodoService.CreateAsync(form.Title, form.Description);
+                await TodoService.CreateAsync(ownerId, form.Title, form.Description);
                 successMessage = "Uppgiften har lagts till.";
             }
         }
@@ -187,7 +195,7 @@
 
         try
         {
-            await TodoService.SetCompletedAsync(todo.Id, !todo.IsCompleted);
+            await TodoService.SetCompletedAsync(ownerId, todo.Id, !todo.IsCompleted);
             successMessage = todo.IsCompleted
                 ? "Uppgiften markerades som ej klar."
                 : "Uppgiften markerades som klar.";
@@ -211,7 +219,7 @@
 
         try
         {
-            await TodoService.DeleteAsync(id);
+            await TodoService.DeleteAsync(ownerId, id);
             if (editingId == id)
             {
                 ResetEditor();

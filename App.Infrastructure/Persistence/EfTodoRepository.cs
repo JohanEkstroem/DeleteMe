@@ -7,7 +7,20 @@ namespace App.Infrastructure.Persistence;
 
 public sealed class EfTodoRepository(IDbContextFactory<TodoDbContext> contextFactory) : ITodoRepository
 {
-    public Task<IReadOnlyList<Todo>> GetAllAsync(CancellationToken cancellationToken = default) =>
+    public Task<IReadOnlyList<Todo>> GetAllForUserAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync<IReadOnlyList<Todo>>(async () =>
+        {
+            await using var dbContext = await contextFactory.CreateDbContextAsync(cancellationToken);
+            return await dbContext.Todos
+                .Where(todo => todo.OwnerId == ownerId)
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+        });
+
+    public Task<IReadOnlyList<Todo>> GetAllForAdminAsync(
+        CancellationToken cancellationToken = default) =>
         ExecuteAsync<IReadOnlyList<Todo>>(async () =>
         {
             await using var dbContext = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -16,7 +29,21 @@ public sealed class EfTodoRepository(IDbContextFactory<TodoDbContext> contextFac
                 .ToListAsync(cancellationToken);
         });
 
-    public Task<Todo?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+    public Task<Todo?> GetByIdForUserAsync(
+        Guid id,
+        string ownerId,
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync(async () =>
+        {
+            await using var dbContext = await contextFactory.CreateDbContextAsync(cancellationToken);
+            return await dbContext.Todos
+                .AsNoTracking()
+                .SingleOrDefaultAsync(todo => todo.Id == id && todo.OwnerId == ownerId, cancellationToken);
+        });
+
+    public Task<Todo?> GetByIdForAdminAsync(
+        Guid id,
+        CancellationToken cancellationToken = default) =>
         ExecuteAsync(async () =>
         {
             await using var dbContext = await contextFactory.CreateDbContextAsync(cancellationToken);

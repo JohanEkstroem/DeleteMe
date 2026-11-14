@@ -1,0 +1,362 @@
+@page "/admin"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using global::App.Application.Todos
+@using global::App.Web.Services
+@inject AdminDashboardService DashboardService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+@inject ILogger<Admin> Logger
+
+<PageTitle>Administration · TaskMaster</PageTitle>
+
+<section class="admin-page">
+    <header class="admin-heading">
+        <div>
+            <p class="eyebrow">TASKMASTER / ADMIN</p>
+            <h1>Överblick</h1>
+            <p>Hantera konton och uppgifter från en samlad vy.</p>
+        </div>
+        <a class="admin-back-link" href="/">Till min lista</a>
+    </header>
+
+    @if (errorMessage is not null)
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (successMessage is not null)
+    {
+        <div class="alert alert-success" role="status">@successMessage</div>
+    }
+
+    @if (isLoading)
+    {
+        <p class="admin-loading">Hämtar administrationsdata…</p>
+    }
+    else if (dashboard is not null)
+    {
+        <div class="admin-stats">
+            <article class="admin-stat">
+                <span>Konton</span>
+                <strong>@dashboard.UserCount</strong>
+                <small>@dashboard.Users.Count(user => !user.IsLocked) aktiva</small>
+            </article>
+            <article class="admin-stat">
+                <span>Uppgifter</span>
+                <strong>@dashboard.TodoCount</strong>
+                <small>för alla användare</small>
+            </article>
+            <article class="admin-stat">
+                <span>Avklarade</span>
+                <strong>@dashboard.CompletedTodoCount</strong>
+                <small>@(dashboard.TodoCount == 0 ? 0 : (int)Math.Round(100d * dashboard.CompletedTodoCount / dashboard.TodoCount)) % av alla uppgifter</small>
+            </article>
+        </div>
+
+        <section class="admin-card">
+            <div class="admin-section-heading">
+                <div>
+                    <p class="eyebrow">KONTON</p>
+                    <h2>Användare</h2>
+                </div>
+                <span class="admin-count">@dashboard.Users.Count totalt</span>
+            </div>
+
+            @if (dashboard.Users.Count == 0)
+            {
+                <p class="admin-empty">Inga konton har skapats ännu.</p>
+            }
+            else
+            {
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>E-post</th>
+                                <th>Status</th>
+                                <th>Uppgifter</th>
+                                <th>Roll</th>
+                                <th><span class="visually-hidden">Åtgärder</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in dashboard.Users)
+                            {
+                                <tr @key="user.Id">
+                                    <td class="admin-email">@user.Email</td>
+                                    <td>
+                                        <span class="status-pill @(user.IsLocked ? "status-locked" : "status-active")">
+                                            @(user.IsLocked ? "Spärrat" : "Aktivt")
+                                        </span>
+                                    </td>
+                                    <td>@user.CompletedTodoCount / @user.TodoCount klara</td>
+                                    <td>@(user.IsAdmin ? "Admin" : "Användare")</td>
+                                    <td class="admin-actions">
+                                        <button class="admin-button"
+                                                type="button"
+                                                @onclick="() => ToggleUserLockAsync(user)">
+                                            @(user.IsLocked ? "Lås upp" : "Spärra")
+                                        </button>
+                                        <button class="admin-button admin-button-danger"
+                                                type="button"
+                                                @onclick="() => DeleteUserAsync(user)">
+                                            Ta bort
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="admin-card">
+            <div class="admin-section-heading">
+                <div>
+                    <p class="eyebrow">ALLA LISTOR</p>
+                    <h2>Uppgifter</h2>
+                </div>
+                <label class="admin-filter">
+                    <span>Filtrera konto</span>
+                    <select class="form-select" @bind="selectedOwnerId">
+                        <option value="">Alla konton</option>
+                        @foreach (var user in dashboard.Users)
+                        {
+                            <option value="@user.Id">@user.Email</option>
+                        }
+                    </select>
+                </label>
+            </div>
+
+            @if (editingTodoId is not null)
+            {
+                <EditForm class="admin-editor" Model="@todoForm" OnValidSubmit="@SaveTodoAsync">
+                    <DataAnnotationsValidator />
+                    <h3>Redigera uppgift</h3>
+                    <div class="admin-editor-fields">
+                        <label>
+                            Titel
+                            <InputText class="form-control" @bind-Value="todoForm.Title" />
+                            <ValidationMessage For="() => todoForm.Title" />
+                        </label>
+                        <label>
+                            Beskrivning
+                            <InputTextArea class="form-control" rows="2" @bind-Value="todoForm.Description" />
+                        </label>
+                    </div>
+                    <div class="admin-actions">
+                        <button class="admin-button admin-button-primary" type="submit">Spara</button>
+                        <button class="admin-button" type="button" @onclick="CancelTodoEdit">Avbryt</button>
+                    </div>
+                </EditForm>
+            }
+
+            @if (VisibleTodos.Count == 0)
+            {
+                <p class="admin-empty">Inga uppgifter matchar filtret.</p>
+            }
+            else
+            {
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Uppgift</th>
+                                <th>Konto</th>
+                                <th>Status</th>
+                                <th><span class="visually-hidden">Åtgärder</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var todo in VisibleTodos)
+                            {
+                                <tr @key="todo.Id">
+                                    <td>
+                                        <span class="admin-email">@todo.Title</span>
+                                        @if (!string.IsNullOrWhiteSpace(todo.Description))
+                                        {
+                                            <small class="admin-description">@todo.Description</small>
+                                        }
+                                    </td>
+                                    <td>@todo.OwnerEmail</td>
+                                    <td>
+                                        <span class="status-pill @(todo.IsCompleted ? "status-active" : "status-pending")">
+                                            @(todo.IsCompleted ? "Klar" : "Pågår")
+                                        </span>
+                                    </td>
+                                    <td class="admin-actions">
+                                        <button class="admin-button" type="button" @onclick="() => EditTodo(todo)">Ändra</button>
+                                        <button class="admin-button"
+                                                type="button"
+                                                @onclick="() => ToggleTodoAsync(todo)">
+                                            @(todo.IsCompleted ? "Återöppna" : "Markera klar")
+                                        </button>
+                                        <button class="admin-button admin-button-danger"
+                                                type="button"
+                                                @onclick="() => DeleteTodoAsync(todo)">
+                                            Ta bort
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private AdminDashboardData? dashboard;
+    private TodoForm todoForm = new();
+    private string currentAdminId = string.Empty;
+    private string selectedOwnerId = string.Empty;
+    private Guid? editingTodoId;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? successMessage;
+
+    private List<AdminTodoSummary> VisibleTodos =>
+        dashboard?.Todos
+            .Where(todo => string.IsNullOrEmpty(selectedOwnerId) || todo.OwnerId == selectedOwnerId)
+            .ToList() ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentAdminId = authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("The authenticated administrator has no identifier.");
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        isLoading = true;
+        try
+        {
+            dashboard = await DashboardService.GetDashboardAsync();
+        }
+        catch (TodoRepositoryException exception)
+        {
+            Logger.LogError(exception, "Could not load the administrator dashboard.");
+            errorMessage = "Administrationsvyn kunde inte hämtas. Försök igen.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ToggleUserLockAsync(AdminUserSummary user)
+    {
+        await RunAdminActionAsync(
+            () => DashboardService.SetUserDisabledAsync(user.Id, currentAdminId, !user.IsLocked),
+            user.IsLocked ? "Kontot har låsts upp." : "Kontot har spärrats.");
+    }
+
+    private async Task DeleteUserAsync(AdminUserSummary user)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Ta bort kontot {user.Email} och alla dess uppgifter?"))
+        {
+            return;
+        }
+
+        await RunAdminActionAsync(
+            () => DashboardService.DeleteUserAsync(user.Id, currentAdminId),
+            "Kontot och dess uppgifter har tagits bort.");
+    }
+
+    private void EditTodo(AdminTodoSummary todo)
+    {
+        editingTodoId = todo.Id;
+        todoForm = new TodoForm
+        {
+            Title = todo.Title,
+            Description = todo.Description
+        };
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private void CancelTodoEdit()
+    {
+        editingTodoId = null;
+        todoForm = new TodoForm();
+    }
+
+    private async Task SaveTodoAsync()
+    {
+        if (editingTodoId is not Guid id)
+        {
+            return;
+        }
+
+        await RunAdminActionAsync(async () =>
+        {
+            await DashboardService.UpdateTodoAsync(id, todoForm.Title, todoForm.Description);
+            CancelTodoEdit();
+        }, "Uppgiften har uppdaterats.");
+    }
+
+    private Task ToggleTodoAsync(AdminTodoSummary todo) =>
+        RunAdminActionAsync(
+            () => DashboardService.SetTodoCompletedAsync(todo.Id, !todo.IsCompleted),
+            "Uppgiftens status har uppdaterats.");
+
+    private async Task DeleteTodoAsync(AdminTodoSummary todo)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Ta bort uppgiften ”{todo.Title}”?"))
+        {
+            return;
+        }
+
+        if (editingTodoId == todo.Id)
+        {
+            CancelTodoEdit();
+        }
+
+        await RunAdminActionAsync(
+            () => DashboardService.DeleteTodoAsync(todo.Id),
+            "Uppgiften har tagits bort.");
+    }
+
+    private async Task RunAdminActionAsync(Func<Task> action, string message)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            await action();
+            successMessage = message;
+            await LoadDashboardAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (TodoNotFoundException)
+        {
+            errorMessage = "Uppgiften finns inte längre. Vyn har uppdaterats.";
+            await LoadDashboardAsync();
+        }
+        catch (TodoRepositoryException exception)
+        {
+            Logger.LogError(exception, "An administrator task operation failed.");
+            errorMessage = "Åtgärden kunde inte genomföras. Försök igen.";
+        }
+    }
+
+    private sealed class TodoForm
+    {
+        [Required(ErrorMessage = "Ange en titel.")]
+        public string Title { get; set; } = string.Empty;
+
+        public string? Description { get; set; }
+    }
+}

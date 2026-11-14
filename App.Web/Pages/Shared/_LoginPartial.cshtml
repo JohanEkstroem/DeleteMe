@@ -1,0 +1,19 @@
+@using App.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+
+<div class="d-flex align-items-center gap-3">
+    @if (SignInManager.IsSignedIn(Context.User))
+    {
+        <span>@Context.User.Identity?.Name</span>
+        <form method="post" action="/Identity/Account/Logout?returnUrl=%2F">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-link">Log out</button>
+        </form>
+    }
+    else
+    {
+        <a href="/Identity/Account/Register">Register</a>
+        <a href="/Identity/Account/Login">Log in</a>
+    }
+</div>

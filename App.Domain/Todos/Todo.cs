@@ -6,13 +6,21 @@ public sealed class Todo
     {
     }
 
-    private Todo(string title, string? description)
+    private Todo(string ownerId, string title, string? description)
     {
         Id = Guid.NewGuid();
+        if (string.IsNullOrWhiteSpace(ownerId))
+        {
+            throw new ArgumentException("Ägare måste anges.", nameof(ownerId));
+        }
+
+        OwnerId = ownerId;
         UpdateDetails(title, description);
     }
 
     public Guid Id { get; private set; }
+
+    public string? OwnerId { get; private set; }
 
     public string Title { get; private set; } = string.Empty;
 
@@ -20,9 +28,9 @@ public sealed class Todo
 
     public bool IsCompleted { get; private set; }
 
-    public static Todo Create(string title, string? description)
+    public static Todo Create(string ownerId, string title, string? description)
     {
-        return new Todo(title, description);
+        return new Todo(ownerId, title, description);
     }
 
     public void UpdateDetails(string title, string? description)

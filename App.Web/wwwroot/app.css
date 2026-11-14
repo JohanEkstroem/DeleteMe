@@ -58,3 +58,13 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+.auth-message {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.8rem;
+    margin: 2rem auto;
+    max-width: 36rem;
+    padding: 1.5rem;
+    text-align: center;
+}

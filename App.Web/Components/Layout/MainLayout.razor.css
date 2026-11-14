@@ -91,6 +91,22 @@ main {
     color: #697386;
 }
 
+.account-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-left: auto;
+}
+
+.account-nav ::deep a {
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.account-nav ::deep a:hover {
+    text-decoration: underline;
+}
+
 .brand {
     color: #202838;
     font-size: 1.2rem;
@@ -101,6 +117,17 @@ main {
 .app-main {
     width: min(980px, calc(100% - 2rem));
     margin: 2rem auto;
+}
+
+@media (max-width: 640.98px) {
+    .app-header {
+        flex-wrap: wrap;
+    }
+
+    .account-nav {
+        margin-left: 0;
+        width: 100%;
+    }
 }
 
 #blazor-error-ui {
