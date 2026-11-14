@@ -2,8 +2,6 @@
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using global::App.Application.Todos
-@using Microsoft.Data.Sqlite
-@using Microsoft.EntityFrameworkCore
 @inject TodoService TodoService
 @inject ILogger<Home> Logger
 
@@ -115,9 +113,9 @@
         {
             todos = (await TodoService.GetAllAsync()).ToList();
         }
-        catch (SqliteException exception)
+        catch (TodoRepositoryException exception)
         {
-            ReportDatabaseError(exception);
+            ReportTodoError(exception);
         }
         finally
         {
@@ -154,14 +152,9 @@
             await LoadTodosAsync();
             return;
         }
-        catch (DbUpdateException exception)
+        catch (TodoRepositoryException exception)
         {
-            ReportDatabaseError(exception);
-            return;
-        }
-        catch (SqliteException exception)
-        {
-            ReportDatabaseError(exception);
+            ReportTodoError(exception);
             return;
         }
 
@@ -205,13 +198,9 @@
             errorMessage = "Uppgiften finns inte längre. Listan har uppdaterats.";
             await LoadTodosAsync();
         }
-        catch (DbUpdateException exception)
+        catch (TodoRepositoryException exception)
         {
-            ReportDatabaseError(exception);
-        }
-        catch (SqliteException exception)
-        {
-            ReportDatabaseError(exception);
+            ReportTodoError(exception);
         }
     }
 
@@ -236,13 +225,9 @@
             errorMessage = "Uppgiften finns inte längre. Listan har uppdaterats.";
             await LoadTodosAsync();
         }
-        catch (DbUpdateException exception)
+        catch (TodoRepositoryException exception)
         {
-            ReportDatabaseError(exception);
-        }
-        catch (SqliteException exception)
-        {
-            ReportDatabaseError(exception);
+            ReportTodoError(exception);
         }
     }
 
@@ -252,11 +237,11 @@
         form = new TodoForm();
     }
 
-    private void ReportDatabaseError(Exception exception)
+    private void ReportTodoError(TodoRepositoryException exception)
     {
-        Logger.LogError(exception, "Todo-databasen kunde inte hantera begäran.");
+        Logger.LogError(exception, "Todo-förfrågan kunde inte slutföras.");
         successMessage = null;
-        errorMessage = "Databasen kunde inte nås. Försök igen.";
+        errorMessage = "Det gick inte att hantera uppgiften. Försök igen.";
     }
 
     private sealed class TodoForm
