@@ -36,6 +36,10 @@ builder.Services
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<TodoDbContext>();
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/login";
+});
 builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider>();
 
 var app = builder.Build();
@@ -63,6 +67,23 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    var componentPath = context.Request.Path.Value switch
+    {
+        string path when path.Equals("/Identity/Account/Login", StringComparison.OrdinalIgnoreCase) => "/login",
+        string path when path.Equals("/Identity/Account/Register", StringComparison.OrdinalIgnoreCase) => "/register",
+        _ => null
+    };
+
+    if (componentPath is not null)
+    {
+        context.Response.Redirect($"{componentPath}{context.Request.QueryString}");
+        return;
+    }
+
+    await next();
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

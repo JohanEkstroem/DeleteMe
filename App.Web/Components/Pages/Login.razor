@@ -1,0 +1,137 @@
+@page "/login"
+@layout Layout.AuthLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using global::App.Infrastructure.Identity
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Logga in · TaskMaster</PageTitle>
+
+<p class="auth-eyebrow"><span>01</span> SÄKER INLOGGNING</p>
+<h1>Välkommen tillbaka.</h1>
+<p class="auth-intro">Logga in för att öppna din arbetsyta.</p>
+
+<EditForm Model="InputModel!" FormName="login" method="post" OnValidSubmit="LogInAsync" class="auth-form">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="auth-validation" />
+    @if (errorMessage is not null)
+    {
+        <div class="auth-validation" role="alert">@errorMessage</div>
+    }
+
+    <div class="auth-field">
+        <label for="Input_Email">E-postadress</label>
+        <InputText id="Input_Email"
+                   @bind-Value="InputModel!.Email"
+                   type="email"
+                   class="auth-input"
+                   autocomplete="username"
+                   placeholder="du@exempel.se"
+                   autofocus />
+        <ValidationMessage For="() => InputModel!.Email" class="auth-field-error" />
+    </div>
+
+    <div class="auth-field">
+        <label for="Input_Password">Lösenord</label>
+        <InputText id="Input_Password"
+                   @bind-Value="InputModel!.Password"
+                   type="password"
+                   class="auth-input"
+                   autocomplete="current-password"
+                   placeholder="Ditt lösenord" />
+        <ValidationMessage For="() => InputModel!.Password" class="auth-field-error" />
+    </div>
+
+    <label class="auth-check">
+        <InputCheckbox @bind-Value="InputModel!.RememberMe" />
+        <span>Kom ihåg mig</span>
+    </label>
+
+    <button class="auth-submit" type="submit">
+        <span>Logga in</span>
+        <span aria-hidden="true">↗</span>
+    </button>
+</EditForm>
+
+<p class="auth-switch">
+    Inget konto ännu?
+    <a href="@RegisterUrl">Skapa konto</a>
+</p>
+
+@code {
+    [SupplyParameterFromForm(FormName = "login")]
+    private LoginInput? InputModel { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private string? errorMessage;
+
+    protected override void OnInitialized()
+    {
+        InputModel ??= new LoginInput();
+    }
+
+    private string RegisterUrl =>
+        string.IsNullOrWhiteSpace(ReturnUrl)
+            ? "/register"
+            : $"/register?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private async Task LogInAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(
+            InputModel!.Email,
+            InputModel.Password,
+            InputModel.RememberMe,
+            lockoutOnFailure: true);
+
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(GetSafeReturnUrl(), forceLoad: true);
+            return;
+        }
+
+        if (result.RequiresTwoFactor)
+        {
+            var returnUrl = Uri.EscapeDataString(GetSafeReturnUrl());
+            Navigation.NavigateTo(
+                $"/Identity/Account/LoginWith2fa?returnUrl={returnUrl}&rememberMe={InputModel.RememberMe}",
+                forceLoad: true);
+            return;
+        }
+
+        errorMessage = result.IsLockedOut
+            ? "Kontot är tillfälligt spärrat. Försök igen senare."
+            : result.IsNotAllowed
+                ? "Kontot är inte aktiverat för inloggning."
+                : "E-postadress eller lösenord stämmer inte.";
+    }
+
+    private string GetSafeReturnUrl()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl)
+            || !ReturnUrl.StartsWith('/')
+            || ReturnUrl.StartsWith("//", StringComparison.Ordinal)
+            || ReturnUrl.StartsWith("/\\", StringComparison.Ordinal))
+        {
+            return "/";
+        }
+
+        return ReturnUrl;
+    }
+
+    private sealed class LoginInput
+    {
+        [Required(ErrorMessage = "Ange din e-postadress.")]
+        [EmailAddress(ErrorMessage = "Ange en giltig e-postadress.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ditt lösenord.")]
+        public string Password { get; set; } = string.Empty;
+
+        public bool RememberMe { get; set; }
+    }
+}

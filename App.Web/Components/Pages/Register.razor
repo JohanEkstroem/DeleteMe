@@ -1,0 +1,150 @@
+@page "/register"
+@layout Layout.AuthLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using global::App.Infrastructure.Identity
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+@inject ILogger<Register> Logger
+
+<PageTitle>Skapa konto · TaskMaster</PageTitle>
+
+<p class="auth-eyebrow"><span>02</span> NY ANVÄNDARE</p>
+<h1>Skapa din arbetsyta.</h1>
+<p class="auth-intro">Ett konto. En egen lista. Bara du har åtkomst.</p>
+
+<EditForm Model="InputModel!" FormName="register" method="post" OnValidSubmit="RegisterAsync" class="auth-form">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="auth-validation" />
+    @if (errorMessage is not null)
+    {
+        <div class="auth-validation" role="alert">@errorMessage</div>
+    }
+
+    <div class="auth-field">
+        <label for="Input_Email">E-postadress</label>
+        <InputText id="Input_Email"
+                   @bind-Value="InputModel!.Email"
+                   type="email"
+                   class="auth-input"
+                   autocomplete="email"
+                   placeholder="du@exempel.se"
+                   autofocus />
+        <ValidationMessage For="() => InputModel!.Email" class="auth-field-error" />
+    </div>
+
+    <div class="auth-field">
+        <label for="Input_Password">Lösenord</label>
+        <InputText id="Input_Password"
+                   @bind-Value="InputModel!.Password"
+                   type="password"
+                   class="auth-input"
+                   autocomplete="new-password"
+                   placeholder="Minst 12 tecken" />
+        <ValidationMessage For="() => InputModel!.Password" class="auth-field-error" />
+    </div>
+
+    <div class="auth-field">
+        <label for="Input_ConfirmPassword">Bekräfta lösenord</label>
+        <InputText id="Input_ConfirmPassword"
+                   @bind-Value="InputModel!.ConfirmPassword"
+                   type="password"
+                   class="auth-input"
+                   autocomplete="new-password"
+                   placeholder="Skriv lösenordet igen" />
+        <ValidationMessage For="() => InputModel!.ConfirmPassword" class="auth-field-error" />
+    </div>
+
+    <button class="auth-submit" type="submit">
+        <span>Skapa konto</span>
+        <span aria-hidden="true">↗</span>
+    </button>
+</EditForm>
+
+<p class="auth-switch">
+    Har du redan ett konto?
+    <a href="@LoginUrl">Logga in</a>
+</p>
+
+@code {
+    [SupplyParameterFromForm(FormName = "register")]
+    private RegisterInput? InputModel { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private string? errorMessage;
+
+    protected override void OnInitialized()
+    {
+        InputModel ??= new RegisterInput();
+    }
+
+    private string LoginUrl =>
+        string.IsNullOrWhiteSpace(ReturnUrl)
+            ? "/login"
+            : $"/login?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private async Task RegisterAsync()
+    {
+        var user = new ApplicationUser
+        {
+            UserName = InputModel!.Email,
+            Email = InputModel.Email
+        };
+        var result = await UserManager.CreateAsync(user, InputModel.Password);
+        if (!result.Succeeded)
+        {
+            errorMessage = string.Join(" ", result.Errors.Select(GetErrorMessage));
+            return;
+        }
+
+        Logger.LogInformation("A new user registered.");
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        Navigation.NavigateTo(GetSafeReturnUrl(), forceLoad: true);
+    }
+
+    private string GetSafeReturnUrl()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl)
+            || !ReturnUrl.StartsWith('/')
+            || ReturnUrl.StartsWith("//", StringComparison.Ordinal)
+            || ReturnUrl.StartsWith("/\\", StringComparison.Ordinal))
+        {
+            return "/";
+        }
+
+        return ReturnUrl;
+    }
+
+    private static string GetErrorMessage(IdentityError error) =>
+        error.Code switch
+        {
+            "DuplicateEmail" or "DuplicateUserName" => "Det finns redan ett konto med den e-postadressen.",
+            "InvalidEmail" => "Ange en giltig e-postadress.",
+            "PasswordTooShort" => "Lösenordet måste innehålla minst 12 tecken.",
+            "PasswordRequiresDigit" => "Lösenordet måste innehålla minst en siffra.",
+            "PasswordRequiresLower" => "Lösenordet måste innehålla minst en liten bokstav.",
+            "PasswordRequiresUpper" => "Lösenordet måste innehålla minst en stor bokstav.",
+            "PasswordRequiresNonAlphanumeric" => "Lösenordet måste innehålla minst ett specialtecken.",
+            _ => "Kontot kunde inte skapas. Kontrollera uppgifterna och försök igen."
+        };
+
+    private sealed class RegisterInput
+    {
+        [Required(ErrorMessage = "Ange din e-postadress.")]
+        [EmailAddress(ErrorMessage = "Ange en giltig e-postadress.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ett lösenord.")]
+        [MinLength(12, ErrorMessage = "Lösenordet måste innehålla minst 12 tecken.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Bekräfta ditt lösenord.")]
+        [Compare(nameof(Password), ErrorMessage = "Lösenorden matchar inte.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}
