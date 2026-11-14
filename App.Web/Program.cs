@@ -1,4 +1,5 @@
 using App.Application.Todos;
+using App.Application.Administration;
 using App.Infrastructure.Identity;
 using App.Infrastructure.Persistence;
 using App.Web.Services;
@@ -17,8 +18,9 @@ builder.Services.AddRazorPages();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<TodoService>();
-builder.Services.AddScoped<AdminTodoService>();
-builder.Services.AddScoped<AdminDashboardService>();
+builder.Services.AddScoped<AdminManagementService>();
+builder.Services.AddScoped<IAdminAccess, CurrentAdminAccess>();
+builder.Services.AddScoped<IAdminUserRepository, IdentityAdminUserRepository>();
 builder.Services.AddScoped<IdentitySeeder>();
 builder.Services.AddDbContextFactory<TodoDbContext>(options =>
     options.UseSqlite(connectionString));

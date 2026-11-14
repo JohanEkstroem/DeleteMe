@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="App.Application/App.Application.csproj" />
+  <Project Path="App.Application.Tests/App.Application.Tests.csproj" />
   <Project Path="App.Domain.Tests/App.Domain.Tests.csproj" />
   <Project Path="App.Domain/App.Domain.csproj" />
   <Project Path="App.Infrastructure.Tests/App.Infrastructure.Tests.csproj" />

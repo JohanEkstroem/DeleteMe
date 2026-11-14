@@ -2,11 +2,9 @@
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 @using System.ComponentModel.DataAnnotations
-@using System.Security.Claims
+@using global::App.Application.Administration
 @using global::App.Application.Todos
-@using global::App.Web.Services
-@inject AdminDashboardService DashboardService
-@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject AdminManagementService DashboardService
 @inject IJSRuntime JS
 @inject ILogger<Admin> Logger
 
@@ -214,7 +212,6 @@
 @code {
     private AdminDashboardData? dashboard;
     private TodoForm todoForm = new();
-    private string currentAdminId = string.Empty;
     private string selectedOwnerId = string.Empty;
     private Guid? editingTodoId;
     private bool isLoading = true;
@@ -228,9 +225,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        currentAdminId = authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new InvalidOperationException("The authenticated administrator has no identifier.");
         await LoadDashboardAsync();
     }
 
@@ -246,6 +240,11 @@
             Logger.LogError(exception, "Could not load the administrator dashboard.");
             errorMessage = "Administrationsvyn kunde inte hämtas. Försök igen.";
         }
+        catch (AdminUserRepositoryException exception)
+        {
+            Logger.LogError(exception, "Could not load administrator account data.");
+            errorMessage = "Administrationsvyn kunde inte hämtas. Försök igen.";
+        }
         finally
         {
             isLoading = false;
@@ -255,7 +254,7 @@
     private async Task ToggleUserLockAsync(AdminUserSummary user)
     {
         await RunAdminActionAsync(
-            () => DashboardService.SetUserDisabledAsync(user.Id, currentAdminId, !user.IsLocked),
+            () => DashboardService.SetUserDisabledAsync(user.Id, !user.IsLocked),
             user.IsLocked ? "Kontot har låsts upp." : "Kontot har spärrats.");
     }
 
@@ -267,7 +266,7 @@
         }
 
         await RunAdminActionAsync(
-            () => DashboardService.DeleteUserAsync(user.Id, currentAdminId),
+            () => DashboardService.DeleteUserAsync(user.Id),
             "Kontot och dess uppgifter har tagits bort.");
     }
 
@@ -348,6 +347,11 @@
         catch (TodoRepositoryException exception)
         {
             Logger.LogError(exception, "An administrator task operation failed.");
+            errorMessage = "Åtgärden kunde inte genomföras. Försök igen.";
+        }
+        catch (AdminUserRepositoryException exception)
+        {
+            Logger.LogError(exception, "An administrator account operation failed.");
             errorMessage = "Åtgärden kunde inte genomföras. Försök igen.";
         }
     }
