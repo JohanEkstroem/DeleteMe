@@ -73,6 +73,7 @@ app.Use(async (context, next) =>
     {
         string path when path.Equals("/Identity/Account/Login", StringComparison.OrdinalIgnoreCase) => "/login",
         string path when path.Equals("/Identity/Account/Register", StringComparison.OrdinalIgnoreCase) => "/register",
+        string path when path.Equals("/Identity/Account/Manage", StringComparison.OrdinalIgnoreCase) => "/account",
         _ => null
     };
 

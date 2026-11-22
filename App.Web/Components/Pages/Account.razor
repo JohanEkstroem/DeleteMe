@@ -1,0 +1,145 @@
+@page "/account"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using global::App.Infrastructure.Identity
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Konto · TaskMaster</PageTitle>
+
+<section class="account-page">
+    <p class="auth-eyebrow"><span>03</span> DITT KONTO</p>
+    <h1>Kontoinställningar.</h1>
+    <p class="auth-intro">Hantera dina uppgifter och byt lösenord.</p>
+
+    @if (isLoading)
+    {
+        <p class="auth-intro" role="status">Läser kontouppgifter…</p>
+    }
+    else if (loadError is not null)
+    {
+        <div class="auth-validation" role="alert">@loadError</div>
+    }
+    else
+    {
+        <section class="account-details" aria-labelledby="account-details-title">
+            <h2 id="account-details-title">Kontouppgifter</h2>
+            <div class="auth-field">
+                <label for="account-email">E-postadress</label>
+                <input id="account-email" class="auth-input account-input-readonly" value="@email" readonly />
+            </div>
+        </section>
+
+        <hr class="account-divider" />
+
+        <h2 class="account-section-title">Byt lösenord</h2>
+        <EditForm Model="passwordModel" FormName="change-password" OnValidSubmit="ChangePasswordAsync" class="auth-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="auth-validation" />
+            @if (message is not null)
+            {
+                <div class="@(passwordChanged ? "account-success" : "auth-validation")" role="@(passwordChanged ? "status" : "alert")">@message</div>
+            }
+
+            <div class="auth-field">
+                <label for="current-password">Nuvarande lösenord</label>
+                <InputText id="current-password" @bind-Value="passwordModel.CurrentPassword" type="password" class="auth-input" autocomplete="current-password" />
+                <ValidationMessage For="() => passwordModel.CurrentPassword" class="auth-field-error" />
+            </div>
+            <div class="auth-field">
+                <label for="new-password">Nytt lösenord</label>
+                <InputText id="new-password" @bind-Value="passwordModel.NewPassword" type="password" class="auth-input" autocomplete="new-password" />
+                <ValidationMessage For="() => passwordModel.NewPassword" class="auth-field-error" />
+            </div>
+            <div class="auth-field">
+                <label for="confirm-password">Bekräfta nytt lösenord</label>
+                <InputText id="confirm-password" @bind-Value="passwordModel.ConfirmPassword" type="password" class="auth-input" autocomplete="new-password" />
+                <ValidationMessage For="() => passwordModel.ConfirmPassword" class="auth-field-error" />
+            </div>
+            <button class="auth-submit" type="submit">
+                <span>Spara nytt lösenord</span>
+                <span aria-hidden="true">↗</span>
+            </button>
+        </EditForm>
+    }
+</section>
+
+@code {
+    private readonly PasswordChangeModel passwordModel = new();
+    private ApplicationUser? user;
+    private string? email;
+    private string? loadError;
+    private string? message;
+    private bool isLoading = true;
+    private bool passwordChanged;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        user = await UserManager.GetUserAsync(state.User);
+        if (user is null)
+        {
+            loadError = "Kontot kunde inte läsas in. Logga in igen och försök på nytt.";
+        }
+        else
+        {
+            email = await UserManager.GetEmailAsync(user);
+        }
+
+        isLoading = false;
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        message = null;
+        passwordChanged = false;
+        if (user is null)
+        {
+            message = "Kontot kunde inte läsas in. Logga in igen och försök på nytt.";
+            return;
+        }
+
+        var result = await UserManager.ChangePasswordAsync(user, passwordModel.CurrentPassword, passwordModel.NewPassword);
+        if (!result.Succeeded)
+        {
+            message = result.Errors.Any(error => error.Code == "PasswordMismatch")
+                ? "Nuvarande lösenord stämmer inte."
+                : string.Join(" ", result.Errors.Select(GetPasswordError));
+            return;
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        passwordChanged = true;
+        message = "Lösenordet har uppdaterats.";
+        passwordModel.CurrentPassword = string.Empty;
+        passwordModel.NewPassword = string.Empty;
+        passwordModel.ConfirmPassword = string.Empty;
+    }
+
+    private static string GetPasswordError(IdentityError error) => error.Code switch
+    {
+        "PasswordTooShort" => "Lösenordet är för kort.",
+        "PasswordRequiresDigit" => "Lösenordet måste innehålla minst en siffra.",
+        "PasswordRequiresLower" => "Lösenordet måste innehålla minst en liten bokstav.",
+        "PasswordRequiresUpper" => "Lösenordet måste innehålla minst en stor bokstav.",
+        "PasswordRequiresNonAlphanumeric" => "Lösenordet måste innehålla minst ett specialtecken.",
+        _ => "Lösenordet kunde inte uppdateras. Kontrollera lösenordskraven och försök igen."
+    };
+
+    private sealed class PasswordChangeModel
+    {
+        [Required(ErrorMessage = "Ange ditt nuvarande lösenord.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ett nytt lösenord.")]
+        [MinLength(12, ErrorMessage = "Lösenordet måste innehålla minst 12 tecken.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Bekräfta ditt nya lösenord.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "Lösenorden matchar inte.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}
